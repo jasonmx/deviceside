@@ -8,10 +8,13 @@ from homeassistant.core import HomeAssistant
 
 from .addressing import not_addressable, topic
 from .bridge import logged_options, publish, publish_set, state_reply
+from .classes import TURN_ON_FOR, TURN_ON_FOR_DOESNT_WORK, unplaced
+from .members import expand_group
 from .native_control import COLOR_FIELDS, NEED, native_control, settled
 from .set_check import checked, note
 from ...actions.turn_on_for import TurnOnForRequest
 from ...core.adapter import Adapter
+from ...core.errors import Reason
 from ...core.models import EntityResult, Status, Target
 from ...core.runtime import get_runtime
 from ...core.scope import AdapterScope, DurationLimits, experimental, verified
@@ -56,6 +59,8 @@ class Z2MTurnOnFor(Adapter[TurnOnForRequest]):
         # the Documented test (docs/evidence.md, Levels): it takes the same call, so it stays flagged experimental,
         # untested, until a maintainer judges it ready.
         domains=verified("light") | experimental("switch"),
+        capabilities=TURN_ON_FOR,
+        doesnt_work=TURN_ON_FOR_DOESNT_WORK,
         duration=_TIMER_LIMITS,
         fields=verified("brightness", "color_temp_kelvin", "hs_color", "rgb_color", "xy_color", "transition"),
         confirmable=False,
@@ -63,11 +68,7 @@ class Z2MTurnOnFor(Adapter[TurnOnForRequest]):
     )
 
     def supports(self, hass: HomeAssistant, request: TurnOnForRequest, target: Target) -> str | None:
-        if (reason := super().supports(hass, request, target)) is not None:
-            return reason
-        if (reason := not_addressable(target)) is not None:
-            return reason
-        return None
+        return super().supports(hass, request, target) or not_addressable(target) or _unknown(hass, target)
 
     async def execute(
         self, hass: HomeAssistant, request: TurnOnForRequest, targets: list[Target]
@@ -137,3 +138,24 @@ class Z2MTurnOnFor(Adapter[TurnOnForRequest]):
         get_runtime(hass).schedule(
             hass, f"{self.integration}:{self.action}:{target.entity_id}", ((delay, read) for delay in delays)
         )
+
+
+def _unknown(hass: HomeAssistant, target: Target) -> str | None:
+    """`class_unknown` for a target whose class rests on what DeviceSide doesn't know yet, even with Experimental
+    features on (docs/evidence.md, Doesn't work, not yet supported, untested: where a call is known to harm, a class
+    not yet known is refused); else None.
+
+    The failure it prevents: a Tuya plug left on. Today's call turns the Tuya classes on with no timer
+    (TURN_ON_FOR_DOESNT_WORK), so one that reached it in another class, or inside a group run as one, would stay on.
+    That is a device bridge/devices doesn't yet list as interviewed with both Zigbee strings, unless the registry puts
+    it in `hue` (classes.unplaced: a rebadged Tuya plug looks like another brand until then), and a group whose
+    membership is unknown or that has such a member. Each runs once the bridge cache fills, as Zigbee2MQTT publishes
+    right after a connect; with no cache (its subscribe failed, logged), they stay refused. A device placed in `other`
+    from its strings stays Experimental.
+    """
+    if not target.is_group:
+        return Reason.CLASS_UNKNOWN if unplaced(hass, target) else None
+    members = expand_group(hass, target)
+    if members is None or any(unplaced(hass, member) for member in members):
+        return Reason.CLASS_UNKNOWN
+    return None

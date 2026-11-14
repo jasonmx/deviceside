@@ -15,9 +15,9 @@ same command differently. Each claim is at one of two levels of proof:
   differing only in addressing, and no known class of devices handles it differently.
 
 New features ship as **Experimental** until a maintainer judges them ready for everyone: they stay off until you
-turn on **Experimental features** in **Configure > Settings**. Whether they work or not, please tell us with **Report a
-device test result or bug** in the same menu: your reports help ship them to everyone. How we decide:
-[evidence rules](evidence.md).
+turn on **Experimental features** in **Configure > Settings**, and so, for most features, does a device DeviceSide
+can't place in a known class. Whether they work or not, please tell us with **Report a device test result or bug** in the same menu: your
+reports help ship them to everyone. How we decide: [evidence rules](evidence.md).
 
 ## Maintainers
 
@@ -86,8 +86,9 @@ they work or not: your report helps get them fixed or shipped to everyone.
 ### Zigbee plugs and switches
 
 Turn on with timer and get attributes on a ZHA or Zigbee2MQTT `switch`. A plug works only if its firmware honors the
-Zigbee timed-on command, and few do: Sonoff and Tuya plugs often run their own countdown instead, and the
-[Tuya TS011F](#tuya-ts011f) never switches on. ZHA and Zigbee2MQTT each need their own report.
+Zigbee timed-on command, and few do: Sonoff and Tuya plugs often run their own countdown instead. On Zigbee2MQTT,
+DeviceSide refuses it on Tuya plugs, which would turn on and stay on; the [Tuya TS011F](#tuya-ts011f) runs only Tuya's
+own timer. ZHA and Zigbee2MQTT each need their own report.
 
 ## Not yet supported
 
@@ -99,8 +100,10 @@ that would leave it doing something you didn't ask for, and each card lists them
 
 ### Tuya TS011F
 
-A Zigbee plug that stores the timed-on command's timer as a countdown, which it counts down while off, and never
-switches on. Found on the rig ([integrations](integrations.md#zigbee-plugs-and-switches)).
+A Zigbee plug whose timer runs only Tuya's way, so DeviceSide's timer can leave it off, or turn it on long after the
+time asked and leave it on. On Zigbee2MQTT, DeviceSide refuses turn on with timer on it until it builds Tuya's call.
+ZHA doesn't refuse it yet, so don't give one a timer there. What was measured:
+[internals](internals.md#tested-behavior).
 
 ## Evidence
 
@@ -130,28 +133,41 @@ action's caveat. A group is a native group of the integration (a Hue zone, a ZHA
 
 | Doesn't work | Why | Source |
 |---|---|---|
-| Tuya TS011F | It stores the Zigbee timer as a countdown and never switches on | [source](https://github.com/DeviceSide/DeviceSide/blob/main/docs/integrations.md#zigbee-plugs-and-switches) |
+| Tuya TS011F | Its timer isn't supported yet. DeviceSide's timer can leave it off, or turn it on long after the time asked and leave it on | [source](https://github.com/DeviceSide/DeviceSide/blob/main/docs/integrations/zigbee2mqtt/research/2026-11-14-lab-probe.md) |
 
 ### Zigbee2MQTT
 
 | Action | Level | Items | Tested models | Records |
 |---|---|---|---|---|
-| `get_attributes` | Verified | light entities | `9290024684`, firmware `1.163.1`<br>`8720169392182`, firmware `1.164.2`<br>`9290018217`, firmware `1.122.2`<br>group | [record](integrations/zigbee2mqtt/test-records/get_attributes.md) |
-| `get_attributes` | Experimental | switch entities | | |
-| `lower_brightness` | Verified | light entities; brightness fields | `9290024684`, firmware `1.163.1`<br>group | [record](integrations/zigbee2mqtt/test-records/lower_brightness.md) |
-| `lower_hue` | Verified | light entities; hue fields | `8720169392182`, firmware `1.164.2`<br>group | [record](integrations/zigbee2mqtt/test-records/lower_hue.md) |
-| `lower_saturation` | Verified | light entities; saturation fields | `8720169392182`, firmware `1.164.2`<br>group | [record](integrations/zigbee2mqtt/test-records/lower_saturation.md) |
-| `raise_brightness` | Verified | light entities; brightness fields | `9290024684`, firmware `1.163.1`<br>group | [record](integrations/zigbee2mqtt/test-records/raise_brightness.md) |
-| `raise_hue` | Verified | light entities; hue fields | `8720169392182`, firmware `1.164.2`<br>group | [record](integrations/zigbee2mqtt/test-records/raise_hue.md) |
-| `raise_saturation` | Verified | light entities; saturation fields | `8720169392182`, firmware `1.164.2`<br>group | [record](integrations/zigbee2mqtt/test-records/raise_saturation.md) |
-| `set_attributes` | Verified | light entities; brightness, color_temp_kelvin, hs_color, rgb_color, xy_color, min_brightness, max_brightness fields | `9290024684`, firmware `1.163.1`<br>`8720169392182`, firmware `1.164.2`<br>group | [record](integrations/zigbee2mqtt/test-records/set_attributes.md) |
-| `stop` | Verified | light entities | `9290024684`, firmware `1.163.1`<br>`8720169392182`, firmware `1.164.2`<br>group | [record](integrations/zigbee2mqtt/test-records/stop.md) |
-| `turn_on_for` | Verified | light entities; brightness, color_temp_kelvin, hs_color, rgb_color, xy_color, transition fields | `LWA012`, firmware `1.104.2`<br>`LTA009`, firmware `1.163.1`<br>`LCA016`, firmware `1.164.2` | [record](integrations/zigbee2mqtt/test-records/turn_on_for.md) |
-| `turn_on_for` | Experimental | switch entities | | |
+| `get_attributes` | Verified | light entities; hue classes | `9290024684`, firmware `1.163.1`<br>`8720169392182`, firmware `1.164.2`<br>`9290018217`, firmware `1.122.2`<br>group | [record](integrations/zigbee2mqtt/test-records/get_attributes.md) |
+| `get_attributes` | Experimental | switch entities; other, tuya_zcl, tuya_ts011f, sengled, gledopto classes | | |
+| `lower_brightness` | Verified | light entities; hue classes; brightness fields | `9290024684`, firmware `1.163.1`<br>group | [record](integrations/zigbee2mqtt/test-records/lower_brightness.md) |
+| `lower_brightness` | Documented | other classes | | |
+| `lower_brightness` | Experimental | tuya_zcl, tuya_ts011f, tuya_mcu, sengled, gledopto classes | | |
+| `lower_hue` | Verified | light entities; hue classes; hue fields | `8720169392182`, firmware `1.164.2`<br>group | [record](integrations/zigbee2mqtt/test-records/lower_hue.md) |
+| `lower_hue` | Experimental | other, tuya_zcl, tuya_ts011f, tuya_mcu, sengled, gledopto classes | | |
+| `lower_saturation` | Verified | light entities; hue classes; saturation fields | `8720169392182`, firmware `1.164.2`<br>group | [record](integrations/zigbee2mqtt/test-records/lower_saturation.md) |
+| `lower_saturation` | Experimental | other, tuya_zcl, tuya_ts011f, tuya_mcu, sengled, gledopto classes | | |
+| `raise_brightness` | Verified | light entities; hue classes; brightness fields | `9290024684`, firmware `1.163.1`<br>group | [record](integrations/zigbee2mqtt/test-records/raise_brightness.md) |
+| `raise_brightness` | Documented | other classes | | |
+| `raise_brightness` | Experimental | tuya_zcl, tuya_ts011f, tuya_mcu, sengled, gledopto classes | | |
+| `raise_hue` | Verified | light entities; hue classes; hue fields | `8720169392182`, firmware `1.164.2`<br>group | [record](integrations/zigbee2mqtt/test-records/raise_hue.md) |
+| `raise_hue` | Experimental | other, tuya_zcl, tuya_ts011f, tuya_mcu, sengled, gledopto classes | | |
+| `raise_saturation` | Verified | light entities; hue classes; saturation fields | `8720169392182`, firmware `1.164.2`<br>group | [record](integrations/zigbee2mqtt/test-records/raise_saturation.md) |
+| `raise_saturation` | Experimental | other, tuya_zcl, tuya_ts011f, tuya_mcu, sengled, gledopto classes | | |
+| `set_attributes` | Verified | light entities; hue classes; brightness, color_temp_kelvin, hs_color, rgb_color, xy_color, min_brightness, max_brightness fields | `9290024684`, firmware `1.163.1`<br>`8720169392182`, firmware `1.164.2`<br>group | [record](integrations/zigbee2mqtt/test-records/set_attributes.md) |
+| `set_attributes` | Experimental | other, tuya_zcl, tuya_ts011f, sengled, gledopto classes | | |
+| `stop` | Verified | light entities; hue classes | `9290024684`, firmware `1.163.1`<br>`8720169392182`, firmware `1.164.2`<br>group | [record](integrations/zigbee2mqtt/test-records/stop.md) |
+| `stop` | Documented | other classes | | |
+| `stop` | Experimental | tuya_zcl, tuya_ts011f, tuya_mcu, sengled, gledopto classes | | |
+| `turn_on_for` | Verified | light entities; hue classes; brightness, color_temp_kelvin, hs_color, rgb_color, xy_color, transition fields | `LWA012`, firmware `1.104.2`<br>`LTA009`, firmware `1.163.1`<br>`LCA016`, firmware `1.164.2` | [record](integrations/zigbee2mqtt/test-records/turn_on_for.md) |
+| `turn_on_for` | Experimental | switch entities; other, gledopto classes | | |
 
 | Doesn't work | Why | Source |
 |---|---|---|
-| Tuya TS011F | It stores the Zigbee timer as a countdown and never switches on | [source](https://github.com/DeviceSide/DeviceSide/blob/main/docs/integrations.md#zigbee-plugs-and-switches) |
+| Tuya TS011F (`turn_on_for`) | Zigbee2MQTT turns it on with no timer, so it stays on | [source](https://github.com/DeviceSide/DeviceSide/blob/main/docs/integrations/zigbee2mqtt/research/2026-11-14-lab-probe.md) |
+| Tuya plugs and switches (`turn_on_for`) | Zigbee2MQTT turns it on with no timer, so it stays on | [source](https://github.com/DeviceSide/DeviceSide/blob/main/docs/integrations/zigbee2mqtt/research/2026-11-14-timed-on-call-patterns.md) |
+| Tuya datapoint devices (`turn_on_for`) | Zigbee2MQTT turns it on with no timer, so it stays on | [source](https://github.com/DeviceSide/DeviceSide/blob/main/docs/integrations/zigbee2mqtt/research/2026-11-14-timed-on-call-patterns.md) |
 
 ### Shelly
 

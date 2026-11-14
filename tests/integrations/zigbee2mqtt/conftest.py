@@ -1,9 +1,23 @@
+from types import SimpleNamespace
+
 import pytest
 
-from custom_components.deviceside.integrations.zigbee2mqtt import bridge, native_control, read, set_attributes
+from custom_components.deviceside.core.resolver import resolve
+from custom_components.deviceside.core.runtime import DATA, get_runtime
+from custom_components.deviceside.integrations.zigbee2mqtt import (
+    INTEGRATION,
+    bridge,
+    bridge_cache,
+    classes,
+    members,
+    native_control,
+    read,
+    set_attributes,
+)
 from custom_components.deviceside.integrations.zigbee2mqtt.fade import transition_cache
 
 from ...conftest import Clock, unload_mock_entries
+from ...conftest import call as call_service
 from ...fixtures.zigbee2mqtt import GROUPS, IEEE, INFO, Broker, add_z2m_entity, add_z2m_group, z2m_entry
 
 unload_mock_mqtt_entries = unload_mock_entries("mqtt")
@@ -35,7 +49,44 @@ def broker(hass, monkeypatch):
     monkeypatch.setattr(set_attributes, "_FADE_WAIT_S", 0.0)
     monkeypatch.setattr(set_attributes, "_RETRY_S", 0.0)
     hass.services.async_register("mqtt", "publish", fake.publish)
+
+    # The dispatcher lists a group's members from bridge/groups as the running cache would hold it, once the entry is
+    # set up; a test's own cache stays, once it holds bridge/groups.
+    def held(hass):
+        if (cache := bridge_cache.get(hass)) is not None and cache.parsed("groups") is not None:
+            return cache
+        return HeldGroups(fake) if DATA in hass.data else None
+
+    monkeypatch.setattr(members, "bridge_cache", SimpleNamespace(get=held))
+    monkeypatch.setattr(classes, "bridge_cache", SimpleNamespace(get=held))
     return fake
+
+
+async def call(hass, service: str, data: dict, return_response: bool = True):
+    """The response, each entry's class checked and left out, so a test states only what its action decides: every
+    Zigbee2MQTT result names the class its device is, or a group's members' (docs/action-behavior.md)."""
+    response = await call_service(hass, service, data, return_response)
+    for entity_id, entry in (response or {}).items():
+        target = resolve(hass, get_runtime(hass).registry, entity_id)
+        if target.is_group:
+            listed = INTEGRATION.expand_group(hass, target) or []
+            classes = sorted({INTEGRATION.capability(hass, member) for member in listed}) or None
+            assert entry.pop("capabilities", None) == classes, entity_id
+        else:
+            assert entry.pop("capability", None) == INTEGRATION.capability(hass, target), entity_id
+    return response
+
+
+class HeldGroups(bridge_cache.BridgeCache):
+    """A bridge cache holding bridge/groups and bridge/devices, as the broker has them now, for members.expand_group
+    and the classifier."""
+
+    def __init__(self, broker) -> None:
+        super().__init__()
+        self.broker = broker
+
+    def parsed(self, suffix: str):
+        return self.broker.retained.get({"groups": GROUPS, "devices": DEVICES}.get(suffix))
 
 
 DEVICES = "zigbee2mqtt/bridge/devices"
@@ -51,6 +102,14 @@ def clock(hass, setup_production) -> Clock:
     return clock
 
 
+class REGISTRY:
+    """light()'s default Zigbee strings: the registry's vendor, and ZIGBEE_MODEL."""
+
+
+# A Zigbee model no rule matches.
+ZIGBEE_MODEL = "bulb"
+
+
 def light(
     hass,
     broker,
@@ -63,9 +122,18 @@ def light(
     modes: list[str] | None = None,
     color_hs: bool = True,
     color: dict | None = None,
-    manufacturer: str | None = None,
+    manufacturer: str | None = "Philips",
+    model_id: str | None = None,
+    zigbee: tuple[str | None, str | None] | None | type[REGISTRY] = REGISTRY,
+    interviewed: bool | None = None,
 ) -> str:
-    """A Z2M color light HA lists with xy, whose definition exposes color_hs, answering color reads with COLOR."""
+    """A Z2M color light HA lists with xy, whose definition exposes color_hs, answering color reads with COLOR.
+
+    Its bridge/devices entry holds the Zigbee manufacturer and model `zigbee` names. By default, REGISTRY, the
+    registry's manufacturer and ZIGBEE_MODEL: an interviewed device of that vendor that shows no Tuya string. None
+    writes an entry with neither, as Zigbee2MQTT lists a device mid-interview, which the classifier can't place by
+    them. `interview_completed` is `interviewed`, by default whether `zigbee` names any string.
+    """
     name = entity_id.split(".")[1]
     entries = hass.config_entries.async_entries("mqtt")
     entry = entries[0] if entries else z2m_entry(hass)
@@ -73,12 +141,25 @@ def light(
     if state == "on":
         attributes |= {"brightness": brightness, "hs_color": hs}
     add_z2m_entity(
-        hass, entry, entity_id, ieee=ieee, state=state, attributes=attributes, name=name, manufacturer=manufacturer
+        hass,
+        entry,
+        entity_id,
+        ieee=ieee,
+        state=state,
+        attributes=attributes,
+        name=name,
+        manufacturer=manufacturer,
+        model_id=model_id,
     )
     broker.devices[ieee] = (name, {"lightingColorCtrl": {**COLOR, **(color or {})}})
     broker.retained[INFO]["config"]["devices"].setdefault(ieee, {})
     features = [{"name": "state"}, {"name": "brightness"}] + ([{"name": "color_hs"}] if color_hs else [])
     device = {"ieee_address": ieee, "definition": {"exposes": [{"type": "light", "features": features}]}}
+    if zigbee is REGISTRY:
+        zigbee = (manufacturer, ZIGBEE_MODEL)
+    # Its own Zigbee manufacturer and model, which the classifier reads; Z2M holds null for one it hasn't read.
+    device |= dict(zip(("manufacturer", "model_id"), zigbee or (None, None), strict=True))
+    device["interview_completed"] = zigbee is not None if interviewed is None else interviewed
     broker.retained.setdefault(DEVICES, []).append(device)
     return entity_id
 

@@ -7,12 +7,14 @@ from itertools import product
 from types import SimpleNamespace
 
 import pytest
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.deviceside import actions
 from custom_components.deviceside.core.models import Target
 from custom_components.deviceside.core.registry import AdapterRegistry
-from custom_components.deviceside.core.scope import DoesntWork, experimental, verified
+from custom_components.deviceside.core.scope import DoesntWork, Level, experimental, verified
 
 from ..conftest import FAKE_INTEGRATIONS
 from ..fakes.fake_integration import ADAPTERS, INTEGRATION, FakeTurnOffFor, FakeTurnOnFor
@@ -112,6 +114,32 @@ def test_a_scope_holds_only_classes_its_integration_declares():
         _registry([Typo], CLASSED)
 
 
+def test_the_default_class_is_never_verified():
+    """docs/evidence.md, Device classes: it holds every device not yet placed, so no record proves it."""
+    defaulted = replace(CLASSED, default_class="other")
+    _registry([Classed], defaulted)
+
+    class Lifted(FakeTurnOnFor):
+        scope = replace(Classed.scope, capabilities=verified("hue", "other"))
+
+    with pytest.raises(ValueError, match="holds fake's default class 'other' as Verified"):
+        _registry([Lifted], defaulted)
+    _registry([Lifted], CLASSED)  # with no default class, any class may be Verified
+
+
+def test_the_default_class_is_a_declared_one():
+    with pytest.raises(ValueError, match="default_class 'ikea' is none of its classes"):
+        _registry([Classed], replace(CLASSED, default_class="ikea"))
+
+
+def test_shelly_names_no_default_class_and_zigbee2mqtt_holds_its_below_verified():
+    registry = AdapterRegistry.discover()
+    assert registry.integrations["shelly"].default_class is None
+    z2m = [adapter for _, key, adapter in registry.matrix() if key == "zigbee2mqtt" and adapter is not None]
+    assert z2m
+    assert all(adapter.scope.capabilities["other"] < Level.VERIFIED for adapter in z2m)
+
+
 @pytest.mark.parametrize(
     "info",
     [replace(INTEGRATION, classes=frozenset({"hue"})), replace(CLASSED, classes=frozenset())],
@@ -128,9 +156,14 @@ async def test_every_capability_classes_a_stand_in_target_with_no_hass(hass):
     classed = [info for info in AdapterRegistry.discover().available_integrations() if info.capability is not None]
     found = {}
     for info in classed:
+        config = MockConfigEntry(domain=info.ha_domain)
+        config.add_to_hass(hass)
+        device = dr.async_get(hass).async_get_or_create(
+            config_entry_id=config.entry_id, identifiers={(info.ha_domain, info.key)}, manufacturer="Philips"
+        )
         entry = er.async_get(hass).async_get_or_create("light", info.ha_domain, "aabbccddeeff-rgbcct:0")
-        found[info.key] = info.capability(None, Target(entry.entity_id, "light", info.key, entry, None, None, None))
-    assert found == {"shelly": "RGBCCT"}
+        found[info.key] = info.capability(None, Target(entry.entity_id, "light", info.key, entry, device, None, None))
+    assert found == {"shelly": "RGBCCT", "zigbee2mqtt": "hue"}
 
 
 @pytest.mark.parametrize(

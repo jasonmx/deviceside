@@ -12,6 +12,7 @@ from homeassistant.helpers import entity_registry as er
 
 from .addressing import not_addressable, topic, z2m_address
 from .bridge import has_feature, publish, publish_set
+from .classes import FADE_BRIGHTNESS, FADE_COLOR
 from .color_refresh import refresh_color
 from .members import member_lights
 from .native_control import NEED, native_control
@@ -119,7 +120,12 @@ class Fade:
 
 
 def ramp_scope(attribute: str) -> AdapterScope:
-    return AdapterScope(domains=verified("light"), fields=verified(attribute), native_groups=True)
+    """A ramp's scope: a brightness fade's classes are held as stop's are, a hue or saturation fade's apart
+    (classes.py)."""
+    capabilities = FADE_BRIGHTNESS if attribute == BRIGHTNESS else FADE_COLOR
+    return AdapterScope(
+        domains=verified("light"), capabilities=capabilities, fields=verified(attribute), native_groups=True
+    )
 
 
 class Z2MRamp(Adapter[RampRequest]):

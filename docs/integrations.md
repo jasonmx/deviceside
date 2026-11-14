@@ -43,7 +43,8 @@ waiting to be built.
 
 `turn_on_for` and `get_attributes` on Zigbee2MQTT and ZHA plugs and switches are untested
 ([device compatibility](device-compatibility.md#zigbee-plugs-and-switches)). Few honor the Zigbee timer command:
-IKEA's are moving to Thread, and Sonoff and Tuya run their own countdowns (the Tuya TS011F tested never switches on).
+IKEA's are moving to Thread, and Sonoff and Tuya run their own countdowns (the Tuya TS011F's runs only Tuya's way:
+it [doesn't work](device-compatibility.md#tuya-ts011f) with DeviceSide's timer).
 If you try one, please report it whether it works or not: Integrations >
 [DeviceSide](https://my.home-assistant.io/redirect/integration/?domain=deviceside) > Configure > Report a device test
 result or bug, which prefills the device's details.

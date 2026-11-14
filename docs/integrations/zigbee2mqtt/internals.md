@@ -28,6 +28,28 @@ Only devices Z2M registered through MQTT discovery are found: the device carries
 
 One section per adapter module, named after it.
 
+### `classes`
+
+The class rules read the registry device (Z2M's vendor and definition) and, for a device the bridge cache's
+`bridge/devices` lists, its Zigbee `manufacturer` and `model_id` there, indexed by IEEE once per payload (Tested
+behavior: the registry holds no Zigbee strings). The rules, their order and the registry fallback's limit are in the
+`classes.py` docstring.
+
+Which adapters send a Level command to a light that is off, as a Sengled E11-G13 jumps to full on `MoveToLevel`
+while off on ZHA ([ZHA internals](../zha/internals.md), Tested behavior). Read from the code, 2026-11-14; nothing
+probed on Z2M:
+
+- `set_attributes`: `MoveToLevel` with `ExecuteIfOff`, then its kept-level publish,
+  `{"state": null, "brightness", "transition"}`, a `MoveToLevel` without it. The E11-G13 jumped on both on ZHA.
+- `raise_brightness` from off: `{"state": "ON", "brightness": 1, "transition": 0}`, which Z2M sends as
+  `moveToLevelWithOnOff`, then the fade, the same.
+- `turn_on_for` with brightness: Home Assistant's `light.turn_on`, `{"state": "ON", "brightness"}`, also
+  `moveToLevelWithOnOff`.
+- `lower_brightness`, the hue and saturation ramps and `stop` send no Level command to an off light.
+
+`moveToLevelWithOnOff` from off is untested on the Sengled. Every `sengled` scope entry is `experimental(...)`, or
+left out on `turn_on_for`, until the Sengled lab run.
+
 ### `color_modes`
 
 The Home Assistant override is set to `xy`, `hs` and, where present, `color_temp`, on lights
@@ -190,6 +212,22 @@ Measured 2026-10-28 on Z2M 2.14.2 with Hue bulbs (a CT bulb and the A60), Home A
   (seven group flips). The reply's `data.to` holds the entity's options after the write, without `friendly_name`.
 - **After an xy stop,** Z2M's read-back carries its cached end-point x/y, not where the bulb halted; a
   `{"color": ""}` get publishes the halted x/y.
+
+Device strings and timers, 2026-11-14 on Z2M 2.14.3 (ZHC 26.125.0), Home Assistant 2026.10.4. Probe:
+[research/2026-11-14-lab-probe.md](research/2026-11-14-lab-probe.md).
+
+- **The registry holds Z2M's definition, not the Zigbee strings.** A TS011F plug registers as manufacturer `Tuya`,
+  model `Smart plug (with power monitoring)`, `model_id` `TS011F_plug_1`; its Zigbee model `TS011F` and manufacturer
+  `_TZ3000_…` are only in `bridge/devices`, with the `countdown` expose. A Sengled E11-G13 registers as `Sengled`,
+  `Element classic (A19)`, `model_id` `E11-G13`, and `sw_version` is Z2M's own version. A group registers as
+  `Zigbee2MQTT` / `Group`, and its members each resolve to a device.
+- **`TS011F_plug_1` has no `on_time` converter:** `{"state": "ON", "on_time": 10}` logs `No converter available for
+  'on_time'` and turns the plug on with no timer. Tuya's own recipe and `countdown` work: shared
+  [internals.md](../../internals.md), Tested behavior.
+- **A Sengled E11-G13 ignores `0x42` silently** (ZHA rejects it, [ZHA internals](../zha/internals.md)): in tenths
+  or whole seconds, from off or after a plain On, Z2M logs it invoked and the bulb doesn't change state. It has no
+  `onTime` or `offWaitTime` (`UNSUPPORTED_ATTRIBUTE`). So `{"state": "ON", "on_time": 10}`, which the light
+  converter sends as `0x42` alone, leaves it off.
 
 ## Upstream defects
 

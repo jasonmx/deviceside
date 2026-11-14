@@ -5,8 +5,8 @@ import pytest
 from custom_components.deviceside.core.transition import BRIGHTNESS
 from custom_components.deviceside.integrations.zigbee2mqtt.fade import transition_cache
 
-from .conftest import SENT, SET, commands, group, light
-from ...conftest import call, result
+from .conftest import SENT, SET, call, commands, group, light
+from ...conftest import result
 
 pytestmark = pytest.mark.usefixtures("setup_production", "clock")
 

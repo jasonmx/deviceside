@@ -7,6 +7,76 @@ in [internals.md](internals.md).
 
 Lights that Zigbee2MQTT announced to Home Assistant through MQTT discovery.
 
+## Device classes
+
+Zigbee devices given the same command can answer it differently, by brand and firmware
+([research](research/2026-11-14-timed-on-call-patterns.md)), so a test on one brand proves nothing about another.
+DeviceSide tells them apart by the manufacturer and model Zigbee2MQTT registers in Home Assistant and, for Tuya
+devices sold under other brands, by the device's own Zigbee manufacturer and model, which Zigbee2MQTT publishes as
+it connects. Every feature says how well it is proven for each
+([levels of proof](../../device-compatibility.md#levels-of-proof)).
+
+- **Hue bulbs** (manufacturer `Philips`) are tested: every feature on this page has passed on them.
+- A **group** is proven as far as its weakest light. One with a light a feature refuses, or, with Experimental
+  features off, one of another brand, falls back to its lights, each on its own; with them on, it runs as one group.
+  A member Home Assistant has no light for (a plug Zigbee2MQTT shows as a switch, say) counts by its device, so a Tuya
+  plug in a group makes it fall back too. Right after Home Assistant connects to MQTT, until Zigbee2MQTT republishes
+  its groups, which it does as the connection comes up, DeviceSide can't tell a group's members: the group counts as
+  Experimental, and turn on with timer refuses it (`class_unknown`), as a Tuya plug in it would stay on. If DeviceSide
+  can't subscribe to Zigbee2MQTT's bridge at all, it logs a warning, groups run only with Experimental features on,
+  and, until the integration reloads, turn on with timer refuses every group and every light, plug or switch but
+  Hue's (IKEA's included), as it can't tell which is a rebadged Tuya device.
+
+### Tuya
+
+Tuya plugs, switches and lights, including those sold under other brands (Lidl, Moes, BlitzWolf and more). Most run
+Tuya's own countdown instead of the Zigbee timer, and Zigbee2MQTT turns DeviceSide's timer into a plain on, so turn
+on with timer doesn't work on them: the device would turn on and stay on
+([research](research/2026-11-14-timed-on-call-patterns.md)). DeviceSide refuses it, even with Experimental features
+on, until it builds Tuya's countdown. Their other features are untested, so they run only with Experimental features
+on.
+
+#### Tuya plugs and switches
+
+Tuya devices on the standard Zigbee on/off commands: plugs, switches and relays (models `TS0001` to `TS0004`, and white
+labels). Turn on with timer doesn't work, as above; on the [Tuya TS011F](../../device-compatibility.md#tuya-ts011f)
+plug it is tested.
+
+#### Tuya datapoint devices
+
+Tuya devices that speak only Tuya's own protocol (model `TS0601`). Turn on with timer doesn't work, as above, and they
+take no standard Zigbee reads or writes, so get attributes and set attributes aren't supported on them either.
+
+Until Zigbee2MQTT publishes its devices after Home Assistant connects to MQTT, or while it is still pairing one,
+DeviceSide knows a rebadged Tuya device only by what Home Assistant shows: the vendor `Tuya`, or a model starting
+`TS`. One shown under another brand, as another brand's device (Lidl's, or Gledopto's GL-SPI-206P, which runs Tuya's
+own protocol), can't be told apart from that brand's own devices for those first moments. So turn on with timer
+refuses every light, plug or switch but a Hue one (`class_unknown`), even with Experimental features on, until
+Zigbee2MQTT lists it as fully paired (interviewed), with its own Zigbee manufacturer and model.
+
+### Sengled
+
+Sengled bulbs ignore the Zigbee timer command, so turn on with timer is not yet supported on them: the bulb would stay
+off ([probe](research/2026-11-14-lab-probe.md)). Their other features are untested, so they run only with
+Experimental features on. A Sengled E11-G13 written while off jumps to full brightness on ZHA
+([ZHA internals](../zha/internals.md)); set attributes on Zigbee2MQTT waits for a test on one.
+
+### Gledopto
+
+Gledopto's LED controllers and bulbs. Zigbee2MQTT sends some of them a plain on, a pause, then the brightness, rather
+than the standard command a Hue bulb gets ([research](research/2026-11-14-timed-on-call-patterns.md)), so every
+feature on them is untested and runs only with Experimental features on.
+
+### Other brands
+
+Lights, plugs and switches of every other brand, such as IKEA, Innr or Ledvance. Dimming smoothly (raise and lower
+brightness) and stop send them exactly the standard Zigbee commands a Hue bulb gets, which no known brand handles
+differently, so they should work. Their other features are untested, so they run only with Experimental features on
+([try it](../../device-compatibility.md#try-it-experimental-features)). Brands differ most on turn on with timer:
+some turn on and never off, or ignore the timer. If you try one, please report it whether it works or not:
+Integrations > [DeviceSide](https://my.home-assistant.io/redirect/integration/?domain=deviceside) > Configure > Report
+a device test result or bug. A brand with a passing report gets its own entry here.
+
 ## What DeviceSide changes in Zigbee2MQTT
 
 DeviceSide sets three Zigbee2MQTT options:

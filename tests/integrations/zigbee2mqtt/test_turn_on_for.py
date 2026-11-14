@@ -13,7 +13,8 @@ from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.deviceside.integrations.zigbee2mqtt import bridge, turn_on_for
 
-from ...conftest import advance, allow_experimental, call, refusal, sent, wall_clock_now
+from .conftest import call
+from ...conftest import advance, allow_experimental, refusal, sent, wall_clock_now
 from ...fixtures.zigbee2mqtt import IEEE, add_z2m_entity, add_z2m_group, z2m_entry
 
 SENT = {"status": "sent", "integration": "zigbee2mqtt"}
@@ -29,6 +30,14 @@ def publishes(hass):
 @pytest.fixture
 def turn_ons(hass):
     return async_mock_service(hass, "light", "turn_on")
+
+
+@pytest.fixture
+def listed(monkeypatch):
+    """A group whose membership turn_on_for takes as known, for a test of its call alone: unknown membership is
+    refused (test_classes.py), and the dispatcher still counts the group as Experimental, as bridge/groups isn't
+    held."""
+    monkeypatch.setattr(turn_on_for, "expand_group", lambda hass, target: [])
 
 
 async def test_light_without_fields_publishes_on_time(hass, setup_production, publishes, turn_ons):
@@ -142,8 +151,9 @@ async def test_turn_on_error_rejects_that_target(hass, setup_production, publish
     assert not publishes  # publish was never reached
 
 
-async def test_group_with_fields_calls_turn_on_then_publishes(hass, setup_production, publishes, turn_ons):
+async def test_group_with_fields_calls_turn_on_then_publishes(hass, setup_production, publishes, turn_ons, listed):
     add_z2m_group(hass, z2m_entry(hass), "light.downstairs", group_id=7)
+    allow_experimental(hass)
 
     response = await call(hass, "turn_on_for", {"entity_id": "light.downstairs", "duration": 5, "brightness": 50})
 
@@ -159,10 +169,11 @@ async def test_group_on_custom_base_topic_is_not_addressable(hass, setup_product
     assert not publishes
 
 
-async def test_device_and_group_each_get_their_own_topic(hass, setup_production, publishes, turn_ons):
+async def test_device_and_group_each_get_their_own_topic(hass, setup_production, publishes, turn_ons, listed):
     entry = z2m_entry(hass)
     add_z2m_entity(hass, entry, "light.kitchen")
     add_z2m_group(hass, entry, "light.downstairs", group_id=7)
+    allow_experimental(hass)
 
     response = await call(hass, "turn_on_for", {"entity_id": ["light.kitchen", "light.downstairs"], "duration": 5})
 
@@ -264,8 +275,9 @@ async def test_a_failed_turn_on_unsubscribes_and_rejects(hass, setup_production,
     assert z2m.subscribers[STATE_TOPIC] == []
 
 
-async def test_a_group_waits_on_its_own_state_topic(hass, setup_production, z2m):
+async def test_a_group_waits_on_its_own_state_topic(hass, setup_production, z2m, listed):
     add_z2m_group(hass, z2m_entry(hass), "light.downstairs", group_id=7, name="Kitchen")
+    allow_experimental(hass)
 
     await call(hass, "turn_on_for", {"entity_id": "light.downstairs", "duration": 5, "brightness": 50})
 
@@ -335,8 +347,9 @@ async def test_late_end_read_scales_with_a_long_timer(hass, setup_production, pu
     assert len(_reads(publishes)) == 3
 
 
-async def test_group_reads_its_group_topic(hass, setup_production, publishes, turn_ons):
+async def test_group_reads_its_group_topic(hass, setup_production, publishes, turn_ons, listed):
     add_z2m_group(hass, z2m_entry(hass), "light.downstairs", group_id=7)
+    allow_experimental(hass)
     start = wall_clock_now()
 
     await call(hass, "turn_on_for", {"entity_id": "light.downstairs", "duration": 5})

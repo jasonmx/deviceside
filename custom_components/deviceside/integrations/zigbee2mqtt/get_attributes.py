@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .addressing import not_addressable
+from .classes import READ_WRITE
 from .members import member_lights
 from .read import Reader, reader
 from ...core.adapter import Adapter
@@ -32,16 +33,13 @@ class Z2MGetAttributes(Adapter[Request]):
     scope: ClassVar[AdapterScope] = AdapterScope(
         # Switches are Experimental, as in turn_on_for.
         domains=verified("light") | experimental("switch"),
+        capabilities=READ_WRITE,
         confirmable=True,
         native_groups=True,  # read through its members, which only Z2M's bridge/groups knows
     )
 
     def supports(self, hass: HomeAssistant, request: Request, target: Target) -> str | None:
-        if (reason := super().supports(hass, request, target)) is not None:
-            return reason
-        if (reason := not_addressable(target, reads_state=True)) is not None:
-            return reason
-        return None
+        return super().supports(hass, request, target) or not_addressable(target, reads_state=True)
 
     async def execute(self, hass: HomeAssistant, request: Request, targets: list[Target]) -> list[EntityResult]:
         async def read(target: Target) -> EntityResult:

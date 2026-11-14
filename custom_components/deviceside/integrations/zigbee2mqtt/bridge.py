@@ -24,7 +24,11 @@ _REPLY_TIMEOUT_S = 5.0
 
 async def group_members(hass: HomeAssistant, group: str) -> list[str]:
     """The IEEE addresses of a Z2M group's members, from bridge/groups; none for a group it doesn't list."""
-    groups = await retained(hass, "groups")
+    return members_of(await retained(hass, "groups"), group)
+
+
+def members_of(groups: list[dict], group: str) -> list[str]:
+    """The IEEE addresses of a group's members in a parsed bridge/groups; none for a group it doesn't list."""
     members = next((g.get("members", []) for g in groups if str(g.get("id")) == group), [])
     return [member["ieee_address"] for member in members if member.get("ieee_address")]
 

@@ -43,7 +43,9 @@ These refine `docs/evidence.md`; they don't replace its tenets.
    `capability()` names it. Code that sends the same call to the same class inherits the evidence.
 2. **Unknown is flagged, never Verified.** A device the classifier can't place falls in the integration's default
    class, which no record reaches until one does. So it runs only behind `experimental`. A misclassification can only
-   make something more cautious.
+   make something more cautious. The exception is tenet 8: where a call is known to harm, a target whose class rests
+   on information DeviceSide doesn't have yet is refused, even with Experimental features on; one placed in the
+   default class from full information stays Experimental.
 3. **Three ways a class can't take an action, each shown differently.**
    - *Doesn't work:* it fails the call we send. Refused in code, listed with a reason and source.
    - *Not yet supported:* it needs a call we haven't built. Refused, listed as not yet supported.
@@ -60,6 +62,9 @@ These refine `docs/evidence.md`; they don't replace its tenets.
 6. **Build only what Z2M needs.** Z2M is the most varied integration, so it sets the bar. Rules match on
    manufacturer and model until a real departure needs firmware. No matcher, setting or tier is added ahead of an
    integration that uses it.
+7. **Split off the exception, not the class** (Decision 25): `docs/evidence.md`, Device classes.
+8. **Where a call is known to harm, a class not yet known is refused** (Decisions 25 and 26): `docs/evidence.md`,
+   Device classes.
 
 ## Design
 
@@ -147,25 +152,114 @@ Each step is one PR, in order, with pytest, pre-commit and the regenerated files
      later.
    - **Accepted:** `check_release --signoffs` fails on Shelly's coverage gaps until its house rerun records the
      Capability column. No release is cut before that rerun.
+   - `gen_compat`'s Capability-cell regex captures any cell, so a malformed cell fails loudly instead of dropping
+     a pass (PR #423 audit, Low).
 5. **Zigbee2MQTT (the driver).**
    - Classes from the probe's real strings: `hue`, `tuya_zcl`, `tuya_mcu`, `other`, and `sengled` if the Sengled needs
      its own rule. A one-off test bulb lifts its maker's class, never `other` (Decision 5).
    - Rules are data, so a later probe changes rule data, not structure.
    - Scopes as planned. `turn_on_for` refuses the Tuya classes as not supported. `sengled` on `turn_on_for` is not
-     supported if the probe confirms it ignores 0x42. The TS011F's entry follows Decision 3.
+     supported if the probe confirms it ignores 0x42. The TS011F's entry follows Decision 16.
    - Once the probe's outcome settles the TS011F's entry, update the docs that depend on it: `docs/evidence.md`'s
-     tenets example, the `docs/integrations.md` Zigbee plugs line and the `docs/models.yaml` reason.
-   - **Open question:** what `capability()` returns for a Z2M device before the first `bridge/devices` after a
-     connect. It stays open until the registry-strings probe shows whether HA's device registry already holds the
-     Tuya model string; if it doesn't, bring it to Jason.
+     tenets example, the `docs/integrations.md` Zigbee plugs line and the `docs/models.yaml` reason, then regenerate
+     `docs/device-compatibility.md`. Their "never switches on" is disproven: a `_TZ3000_typdpbpg` plug switched on
+     106 s after a 10 s request on ZHA.
+   - **Answered (Decision 18):** what `capability()` returns for a Z2M device before the first `bridge/devices`
+     after a connect. The probe answered the precondition: HA's device registry holds no Tuya strings for a Z2M
+     device, only Z2M's definition (`TS011F_plug_1`) (`docs/integrations/zigbee2mqtt/internals.md`).
    - **Group members, sync:** Z2M has no `expand_group`. It gets one, listing a group's members from the bridge
      cache's `bridge/groups`, so a group takes its members' classes and falls back to them (Decision 10).
    - **The default class in code (Decision 5):** an `IntegrationInfo` field naming the default class, which the
      registry refuses at Verified in any scope.
    - **Lab run** on the branch tip, with the Sengled. It tests the classifier, the column, the coverage check, Works
-     credited per class, and the refusals.
+     credited per class, and the refusals. Fixture: the A60 on Z2M, then the Sengled E11-G13 on Z2M in its place.
+   - **Part 1, done** (`claude/device-classes-5-z2m`): everything that needs no probe string. The classifier
+     (`integrations/zigbee2mqtt/classes.py`), rules as data, with the `hue` rule alone (manufacturer `Philips`, the
+     constant `native_control` reads too) and classes `hue` and `other`; `expand_group` from the bridge cache's
+     `bridge/groups` (every Z2M adapter has `native_groups`, so it serves classing and the fallback only);
+     `IntegrationInfo.default_class`, `other` on Z2M, refused at Verified by the registry; scopes `hue` Verified and
+     `other` `experimental(...)` on every adapter. Core, after the plan review: an empty group is skipped, and a group
+     with an Experimental member falls back while the option is off (Decision 8). `models.yaml`'s TS011F entry stays
+     until part 2, which moves it into code per Decision 16.
+   - **Part 2, from the probe:**
+     - **Classes and rules,** each class added with its rule, from §1's registry strings and §3's Tuya signal:
+       `tuya_zcl`, `tuya_mcu`, and `sengled` if the Sengled needs its own. If a signal is only in `bridge/devices`
+       (not the registry), that is a structure change, and goes to Jason with the open question above. Each class
+       gets its `devices.yaml` phrase and section and its `index.md` entry, and the cards are regenerated.
+     - **Scope entries:** `tuya_zcl` and `tuya_mcu` left out of `turn_on_for` (not supported: Z2M turns `on_time`
+       into a plain On that never ends); `tuya_mcu` left out of `get_attributes` and `set_attributes` too (Decision
+       12); the rest `experimental(...)`. The TS011F per Decision 16: a `doesnt_work` entry on `turn_on_for`, matched on the model, holding with
+       Experimental on. `sengled` on `turn_on_for`: out of scope (not supported). The
+       E11-G13 already refuses 0x42 with `UNSUP_CLUSTER_COMMAND` on ZHA (`zha/internals.md`, Groups), so §4 only
+       confirms it on Z2M. `sengled` while off: the E11-G13 jumps to full on `MoveToLevel` while off (research §3),
+       so check every adapter that sends it from off (the raise ramps, `turn_on_for` with brightness), not just
+       `set_attributes`, whose state the Sengled lab run decides (Decision 13).
+     - **Documented for `other`,** settled per adapter, not only `stop`, once the Tuya rules take those devices
+       out of `other`.
+     - **Group members with no light:** `expand_group` answers None (membership unknowable) when some member
+       address resolves to no device or no entity in the group's domain, so a switch-exposed Tuya plug in a Hue group
+       can't leave the group Verified on its Hue members alone. (When none resolves, it already answers None.)
+     - **Docs:** `docs/evidence.md`'s tenets example (the TS011F), the `docs/integrations.md` Zigbee plugs and
+       switches line, `docs/models.yaml`'s TS011F reason (or the entry's move into code, one per integration), the
+       TS011F and Sengled model IDs in `docs/models.yaml`, and `index.md`'s Other brands paragraph on Tuya and
+       Sengled.
+     - **Restore the class names** in `docs/evidence.md` (Device classes, and the coverage check's example) and
+       `docs/design.md` (glossary, Class) once the Tuya classes land: they name only `hue` and `other` until then.
+     - **TODO and the rerun:** tick step 5 in `TODO.md`, and the lab run below, which restores the card's Works
+       line and clears the ten coverage warnings.
+   - **Part 2, built** (`claude/device-classes-5-z2m`), the lab run pending. The TS011F's `doesnt_work` is keyed by
+     a class of its own, `tuya_ts011f`, as `tuya_zcl` stays not supported on `turn_on_for` and a scope entry is per
+     class. `other` is Documented on `raise_brightness`, `lower_brightness` and `stop`, and `experimental(...)` on the
+     rest (argued in the PR body). The `sengled` audit of Level commands sent from off is in the Z2M `internals.md`
+     (`classes`); no behavior changed beyond the scopes. Fix-ups from its plan review and audit, and Decisions 19 to
+     21, land before part 3.
+   - **Part 2's fix-ups, built** (same branch): Decisions 20, 23, 24 and 25. The Tuya classes are doesn't work on
+     `turn_on_for`; a `gledopto` class, `experimental(...)` everywhere; a group member with a device but no entity in
+     the group's domain is classed by its device (a stand-in no action reaches), and only a member with no device
+     leaves membership unknown; Z2M `turn_on_for` refuses, as `class_unknown` and with Experimental features on, a
+     group of unknown membership and a device only the registry placed in `other` (or a group with one). The rule
+     order's one home is the `classes.py` docstring.
+   - **Part 2's fix-ups, rounds 2 and 3, built** (same branch), from each round's plan review and audit, and
+     Decision 26. On Z2M `turn_on_for` a device is placed by one rule (round 3, replacing round 2's `classes.FINAL`):
+     bridge/devices lists it with `interview_completed` true and both Zigbee strings non-empty, or the registry puts
+     it in `hue`, the one class no Zigbee-string rule can override. Every other device waits, so a Gledopto-badged
+     Tuya device in `gledopto`, a Sengled, and a registry-only Tuya device (now `class_unknown` rather than
+     `doesnt_work`, a refusal either way) wait for the strings, and part 3's countdown class will too.
+     `class_unknown` is core's `Reason`, with its own translation, saying it clears once the integration has
+     reported the device (usually seconds; a reload if it never does), and always naming the integration's title;
+     `docs/action-behavior.md` calls it transient. The harm rule's wording in
+     `docs/evidence.md`, `docs/design.md` and the tenets says what it requires: a class resting on information
+     DeviceSide doesn't have yet. The Tuya entries' reason says what the user sees.
+   - **Part 3, the Tuya countdown on Z2M (Decision 22),** after part 2's fix-ups:
+     1. **Read first:** in zigbee-herdsman-converters, whether every definition that exposes `countdown` uses one
+        converter (the same attribute and units). If it does, one class covers them all; if not, a class per
+        converter. Record it in the Z2M `internals.md`, citing the source.
+     2. **Probe** ([spec below](#step-5-part-3-probe-spec)), on the lab TS011F on Z2M, before any code. Its answers
+        settle the read-back and the cancel behavior.
+     3. **Classes:** the class rule matches the `countdown` expose in `bridge/devices` (Z2M's own statement that the
+        device takes the call), not a firmware string. A Tuya device without it keeps today's refusal. While the
+        cache is empty, the registry fallback can't see exposes, so the device keeps today's refusal until it fills.
+     4. **The call:** a branch in Z2M's `turn_on_for` for the class, `{"state": "ON", "countdown": N}` (or as the
+        probe shows), with no `on_time`. Brightness with it follows the probe.
+     5. **Duration limits per class** (from Deferred): whole seconds, 1 to 43,200 s unless the probe shows other
+        bounds; out of range raises as core does, rounding is reported in `clamped_to`. Core change, so an Opus
+        audit.
+     6. **Read-back** per the probe: `confirmed` only if the device reports the countdown; otherwise `sent`.
+        `get_attributes` time left likewise.
+     7. **Level:** `experimental(...)` until the lab run, then Verified for the class the record covers. The cards
+        and `index.md` move the TS011F from Doesn't work.
+     8. **Lab run:** the TS011F on Z2M, added to step 5's lab run.
 6. **Core fix-ups** from step 5's run, before ZHA and Hue copy the pattern. If a package changes, its lab run is
    repeated.
+   - **The harm rule moves to core (Decision 26):** a `harms` flag on `DoesntWork`, and the classifier answering
+     `None` for "can't place yet"; the dispatcher then refuses `class_unknown` for an adapter whose scope holds a
+     `harms` entry, and Z2M's `supports()` check goes.
+   - **"Not placed yet" gets its own sentinel** (a pending class, or a flag on the target's classes), not `None`.
+     `None` already means a permanent "can't class": a Shelly entity with no RPC component, a classifier that raised,
+     a group whose members can't be listed. Core then refuses a pending target only where the adapter's scope has a
+     harm-based `doesnt_work` entry.
+   - **A group with one unplaced member falls back to its members** in core, with only that member refused
+     (`class_unknown`), instead of the whole group being refused as Z2M's `supports()` does today.
 7. **ZHA.** The same shape. Lab run, with the Sengled.
 8. **Hue.** Classes `hue`, `other`, `bridge_v1` (not supported) and `smart_scene` (doesn't work, on `set_scene`).
    `other` is decided per action (Decision 2). Lab run, with the Sengled on the bridge if it pairs. The `bridge_v1`
@@ -474,11 +568,30 @@ join `docs/models.yaml`, per its header.
 |---|---|---|
 | Registry strings and groups | `hue`, `zha`, `zigbee2mqtt` | the `hue` class rules: step 5 (Z2M), 7 (ZHA), 8 (Hue) |
 | Registry strings, WiZ plug | `matter` | step 9 |
-| TS011F response to 0x42 | shared `docs/internals.md`; `zigbee2mqtt`, `zha` keep their own network's rows | step 4 (the `doesnt_work` entry shape), steps 5 and 7 (the TS011F's entry, per Decision 3) |
+| TS011F response to 0x42 | shared `docs/internals.md`; `zigbee2mqtt`, `zha` keep their own network's rows | step 4 (the `doesnt_work` entry shape), steps 5 and 7 (the TS011F's entry, per Decision 16) |
 | C6 converter drop | `zigbee2mqtt`, under Upstream defects if confirmed | step 5 (the Z2M reason) |
 | Tuya signal | `zigbee2mqtt`, `zha` | the `tuya_zcl` / `tuya_mcu` rules: steps 5 and 7 |
 | Sengled strings and 0x42 | `zigbee2mqtt`, `zha`, `hue` | the `sengled` rule and its `turn_on_for` state: steps 5, 7, 8 |
 | TS011F and Sengled model IDs | `docs/models.yaml` | steps 5, 7, 8 (the cards) |
+
+### Step 5 part 3: probe spec
+
+On Z2M, the lab TS011F (`_TZ3000_0zfrhq4i`), from Developer Tools, MQTT publish to `zigbee2mqtt/<plug>/set`; times
+from Z2M's log. Known already (lab probe, C7): `{"state": "ON", "countdown": 10}` from off turns it on and off 10 s
+later. One row each; record the Z2M state payload after each publish.
+
+| Case | Pre-state | Publish | Answers |
+|---|---|---|---|
+| P1 | on | `{"countdown": 10}` alone | whether a countdown starts without `state` |
+| P2 | off | `{"state": "ON", "countdown": 30}`, then at 5 s `{"countdown": 10}` | replace or extend: off at ~15 s or ~35 s |
+| P3 | off | `{"state": "ON", "countdown": 30}`, then at 5 s `{"state": "OFF"}`, then `{"state": "ON"}` | whether off cancels it: still on after 35 s? |
+| P4 | off | `{"state": "ON", "countdown": 30}`, then at 5 s `{"countdown": 0}` | whether 0 cancels it |
+| P5 | off | `{"state": "ON", "countdown": 30}`, then at 5 s the plug's button twice | whether a local toggle cancels it |
+| P6 | off | `{"state": "ON", "countdown": 30}`, then at 5 s `{"countdown": ""}` on `/get` | whether time left can be read, and whether state reports it unprompted |
+| P7 | off | `countdown` 1, then 43200, then 43201 | the bounds: accepted, rejected or clamped (cancel each with P3 or P4's way) |
+
+Results go in a dated research file, `zigbee2mqtt/research/<date>-tuya-countdown-probe.md`, and the facts in the Z2M
+`internals.md`.
 
 ### Runs to repeat
 
@@ -486,11 +599,12 @@ A package changed after its lab run needs that run again before the release. Non
 
 ## Deferred until something needs it
 
-- Per-class `duration` limits: needed by the Tuya countdown pattern (whole seconds, 43,200 s cap) once it's built.
 - Firmware matching in the classifier: needed the first time a firmware boundary decides behavior, such as the Sonoff
   ZBMINIR2 at 1.1.0.
-- Building Tuya patterns B and C, and a non-Hue bulb on the rig. The second lifts that maker's own class on Z2M and
+- Building Tuya pattern B on ZHA and pattern C, and a non-Hue bulb on the rig. The second lifts that maker's own class on Z2M and
   ZHA, never `other` (Decision 5).
+- Tuya's legacy `_TYST11_…` manufacturer strings: the Tuya rules don't match them, so such a device with a model
+  that isn't `TS…` lands in `other`. Check how many devices that covers before adding a rule.
 - A query's own `capability` or `capabilities` data key: the class would overwrite it in the response. No query has
   one; a check is built when one would.
 
@@ -529,10 +643,100 @@ A package changed after its lab run needs that run again before the release. Non
 8. **A native group with a member that doesn't work or isn't supported falls back to its members** when the
    integration has `expand_group`: each member is judged alone, the good ones run, and the refused one is reported
    refused. With no `expand_group` the group can't be judged by member, so it counts as Experimental: refused while
-   Experimental features is off.
+   Experimental features is off. **Amended during step 5:** a member whose class is Experimental falls back the same
+   way while Experimental features is off: the other members run one by one, and the flagged one is skipped with
+   `experimental_off`, raised only if it was named itself. With the option on, the group runs whole, as one command.
+   An empty group is skipped silently (docs/action-behavior.md), never gated. Amended (audit): a group that falls
+   back has no result of its own; with no member planned it is refused with the fallback's reason. Mechanics:
+   design.md (Groups).
 9. **Shelly `set_attributes` on Light, CCT, RGB and RGBW** is Documented if Shelly's Gen2+ docs say, alike for those
    components, that a `Set` without `on` leaves the output as it is; otherwise `experimental(...)`. RGBCCT stays
    Verified.
 10. **Z2M groups get sync member listing in step 5**, from the bridge cache's `bridge/groups`.
 11. **The "ZHA bulb" is the Sengled E11-G13**, already paired on ZHA, sharing one lab fixture with the A60 and the
     Shelly color bulb.
+
+## Decisions (Jason, 2026-11-14, during step 5)
+
+12. **`tuya_mcu` is not supported on `get_attributes` and `set_attributes`:** they send raw ZCL reads and writes,
+    which a TS0601 can't take.
+13. **The Sengled's `set_attributes` state** is decided by the Sengled lab run.
+14. **Parts 1 and 2 of step 5 ship as one PR.**
+15. **The Z2M card's Works line is lost until the lab rerun** fills the Capability column: accepted.
+
+## Decisions (Jason, 2026-11-14, after the lab probe)
+
+16. **The TS011F: one fact, a `doesnt_work` entry for today's call, no firmware split.** This replaces Decision 3's
+   "its doesn't-work entry goes".
+   - The probe tables live in the dated research file (`zigbee2mqtt/research/2026-11-14-lab-probe.md`).
+     `docs/internals.md` holds one cross-network fact listing both behaviors and citing it. It says the two firmwares
+     were on different networks, so the cause is firmware or path, not proven firmware. The model ids go in
+     `docs/models.yaml`.
+   - The class rule matches the model (`TS011F`), never the `_TZ3000_…` string, so firmwares nobody has probed
+     inherit the refusal. Add a firmware rule only if a later probe finds a different call that works.
+   - Today's call is refused by a `doesnt_work` entry whose source is the research file: on ZHA, 0x42 in tenths from
+     off; on Z2M, `{"state": "ON", "on_time": N}`. Marking it untested isn't enough, because an untested class runs
+     the default call once Experimental features is on. That call switches a `_TZ3000_typdpbpg` plug on about 10×
+     later than asked, and on Z2M it leaves the plug on with no timer. A unit test pins that the refusal holds with
+     Experimental on.
+   - The reason users see names no firmware; it says what they see, e.g. that its timer isn't supported yet. The
+     firmware detail stays in `internals.md`.
+   - There's no separate safety note: the `doesnt_work` entry is the safety mechanism, and the card shows "Doesn't
+     work". The switch-on-later finding goes in the PR body as the rule's evidence, and in TODO as a v0.1.0 blocker.
+   - Timing: the Z2M entry lands in step 5 part 2. The ZHA entry is the dangerous one; it is planned for step 7 and
+     must land before v0.1.0 even if step 7 slips.
+   - Building the countdown pattern (a plain On, then 0x42 with N seconds in both fields; Z2M's `countdown` expose on
+     Z2M) is separate, later work. It would move the class from "Doesn't work" to Verified.
+17. **No same-unit re-pair** of the Z2M TS011F to ZHA.
+18. **The Tuya signal on Z2M: the bridge cache first, the registry as fallback.** Answers step 5's open question. The
+    classifier reads the Zigbee manufacturer and model from the `bridge/devices` cache DeviceSide already keeps for
+    group members, so rebadged Tuya devices are caught (`_TZ3000_…`, `_TZE…`). Until that cache fills after a
+    connect, it falls back to the registry: manufacturer `Tuya`, or a `model_id` starting `TS`. Registry-only was
+    rejected because a rebadged plug would land in `other` and, with Experimental features on, take today's call
+    and stay on. This is a structure change confined to the Z2M package: the classifier reads one cache it already
+    has.
+19. **`other` stays Documented on `raise_brightness`, `lower_brightness` and `stop`** on Z2M, as part 2 built it:
+    they send the same standard ZCL commands as the Verified Hue call, pinned by a unit test. The rest stays
+    `experimental(...)`.
+20. **`tuya_zcl` and `tuya_mcu` are "doesn't work" on Z2M `turn_on_for`, not "not supported":** today's call turns
+    them on with no timer, so they stay on, which `docs/evidence.md` counts as harm. Each gets a `doesnt_work` entry
+    with that reason, sourced to the Z2M converter research (`tuya_ts011f`'s, Decision 16, to the lab probe).
+21. **The TS011F keeps its own class, `tuya_ts011f`.**
+22. **The Tuya countdown on Z2M ships in v0.1.0, as step 5 part 3.** Tuya plugs are popular, the probe showed Z2M's
+    `countdown` works, and the lab has the plug. Z2M only: ZHA keeps its refusal (Decision 16), as it would need
+    Tuya's raw recipe.
+
+## Decisions (Jason, 2026-11-14, part 2's fix-ups)
+
+23. **On Z2M, `turn_on_for` refuses unknown, even with Experimental features on.** Audit H1, M1 and M2: a TS011F got
+    today's call with Experimental on in a group where it had no light entity, in any group before `bridge/groups`
+    arrived, and as a rebadged definition before `bridge/devices` arrived. A group member with a device is classed
+    by it; `supports()` refuses a group of unknown membership and a device only the registry placed in `other`.
+24. **A `gledopto` class.** Gledopto's converter sends GL-S-007ZS and GL-C-009 a plain On, a 1 s sleep, then the
+    brightness command (timed-on research, §3), so `other`'s Documented actions (Decision 19) would cover a known
+    departure. Registry manufacturer `Gledopto`, any case; `experimental(...)` on every adapter. `other` stays
+    Documented on those three.
+25. **Two rules in `docs/evidence.md`, Device classes:** split off the exception, not the class; and where a call is
+    known to harm, unknown is refused (tenet 2's exception). Z2M applies the second in Decision 23; ZHA, Hue and
+    Matter apply it in their own steps (7 to 9).
+26. **The harm rule moves to core in step 6,** before ZHA copies the pattern: a `harms` flag on `DoesntWork` marks
+    the entries whose call harms the class, and the classifier answers `None` for a target it can't place yet, which
+    the dispatcher refuses as `class_unknown` on an adapter with a `harms` entry. Until then Z2M's `turn_on_for`
+    applies it in `supports()`.
+
+## Handoff
+
+2026-11-14, step 3 done. Branch `wt/device-classes-3`, worktree `deviceside-wt/device-classes-3`, PR #423.
+
+**Done:** the lab probe, written up in `docs/integrations/zigbee2mqtt/research/2026-11-14-lab-probe.md` and
+`docs/integrations/hue/research/2026-11-14-lab-probe-hue.md`, with the facts in `docs/internals.md`, each bundle's
+`internals.md` and `docs/models.yaml`; Decisions 16 and 17 (numbered 8 and 9 on that branch); the step's plan review (in its last commit).
+
+**Next:** merged into step 5's branch after steps 4 and 5 part 1; step 5 part 2 follows.
+
+**Open:**
+- The Sengled is in the house profile, which is out of bounds until Monday 2026-11-16, so it can't join step 5's lab
+  run until it's back in the lab. Its return to the lab ZHA group is unconfirmed: a group-add call timed out and
+  wasn't checked. Jason checks the group's members before the next ZHA group case. Working notes: the gitignored
+  `notes/lab-probe-2026-11-14/`.
+- Step 5's open question (above) is Jason's call.

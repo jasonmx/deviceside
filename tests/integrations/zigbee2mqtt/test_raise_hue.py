@@ -2,8 +2,7 @@
 
 import pytest
 
-from .conftest import SENT, SET, commands, light
-from ...conftest import call
+from .conftest import SENT, SET, call, commands, light
 
 pytestmark = pytest.mark.usefixtures("setup_production", "clock")
 

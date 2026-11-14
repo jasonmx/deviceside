@@ -26,13 +26,23 @@ models:
   - name: Shelly Multicolor Bulb Gen3
     ids: [S3BL-C010007AEU]
     type: bulb
+  - name: Sengled Element Classic A19
+    ids: [E11-G13]
+    type: bulb
+    section: Sengled
+  - name: Tuya TS011F
+    ids: [TS011F, TS011F_plug_1]
+    type: plug
   - name: WiZ Smart Plug
     ids: ["8979"]
     type: plug
 
-# Devices that fail the call DeviceSide sends on several integrations, and why. One integration's go in its bundle.
+# Devices that fail the call DeviceSide sends on several integrations, and why. One integration's go in its bundle,
+# or in its scopes' code (core/scope.py, DoesntWork): Zigbee2MQTT's TS011F entry is there; ZHA's moves there in the
+# device-classes plan's step 7.
 doesnt_work:
   - what: Tuya TS011F
-    integrations: [zha, zigbee2mqtt]
-    reason: It stores the Zigbee timer as a countdown and never switches on
-    source: https://github.com/DeviceSide/DeviceSide/blob/main/docs/integrations.md#zigbee-plugs-and-switches
+    integrations: [zha]
+    reason: Its timer isn't supported yet. DeviceSide's timer can leave it off, or turn it on long after the time asked
+      and leave it on
+    source: https://github.com/DeviceSide/DeviceSide/blob/main/docs/integrations/zigbee2mqtt/research/2026-11-14-lab-probe.md

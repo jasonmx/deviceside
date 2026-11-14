@@ -124,6 +124,19 @@ Groups (2026-10-27, the LTA004, a Sengled E11-G13 and a plug): a unicast `turn_o
 group `OnWithTimedOff` returns in 0.02 s, zigpy's own success with no delivery feedback, and a member that refuses
 the command (the Sengled, `UNSUP_CLUSTER_COMMAND` by unicast) misses it silently, so each member is read back.
 
+Device strings, 2026-11-14 on Home Assistant 2026.10.4. Probe:
+[lab-probe](../zigbee2mqtt/research/2026-11-14-lab-probe.md), §1.
+
+- **The registry holds the raw Zigbee strings,** manufacturer and model, with `model_id` empty: a TS011F plug is
+  `_TZ3000_typdpbpg` / `TS011F`, a Sengled `sengled` / `E11-G13`, Hue bulbs `Signify Netherlands B.V.` and their
+  model ID (`LTA009`). `sw_version` is the Zigbee firmware in hex.
+- **Beyond it, readable through `zcl.gateway`:** the TS011F has quirk `zhaquirks.tuya.ts011f_plug:Plug` (no
+  `quirk_id`), `manufacturer_code` 4417, and the Tuya clusters `0xe000` and `0xe001` on endpoint 1. The Sengled
+  (4448) and the Hue bulbs (4107) have no quirk.
+- **A group's light entity resolves to the coordinator's device** (here `SONOFF` / `ZBDongle-E`); its members each
+  resolve to their own.
+- The TS011F's timer: shared [internals.md](../../internals.md), Tested behavior.
+
 ## Upstream defects
 
 Workarounds the adapters carry for behavior upstream that could be fixed there. Only the issues our code already

@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 
 from .addressing import not_addressable
 from .bridge import publish_set
+from .classes import READ_WRITE
 from .members import member_lights
 from .read import Reader, reader
 from .set_check import checked
@@ -136,6 +137,7 @@ class Z2MSetAttributes(Adapter[SetAttributesRequest]):
     integration: ClassVar[str] = "zigbee2mqtt"
     scope: ClassVar[AdapterScope] = AdapterScope(
         domains=verified("light"),
+        capabilities=READ_WRITE,
         fields=verified(
             "brightness", "color_temp_kelvin", "hs_color", "rgb_color", "xy_color", "min_brightness", "max_brightness"
         ),

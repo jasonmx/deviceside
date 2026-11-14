@@ -55,6 +55,8 @@ class BridgeCache:
         self._on_online = on_online
         self._payloads: dict[str, str] = {}
         self._parsed: dict[str, tuple[str, Any]] = {}
+        # bridge/devices by IEEE address, for the parsed list it was built from.
+        self._devices: tuple[Any, dict[str, dict]] | None = None
         self.pending: dict[str, asyncio.Future[dict]] = {}
         # Options Z2M confirmed since its last bridge/info, by (section, Z2M ID): Z2M's whole options after the write.
         self.confirmed: dict[tuple[str, str], dict] = {}
@@ -78,6 +80,19 @@ class BridgeCache:
                 parsed = None
             memo = self._parsed[suffix] = (payload, parsed)
         return memo[1]
+
+    def device(self, ieee: str) -> dict | None:
+        """A device's entry in the held bridge/devices, by IEEE address, indexed once per payload: the classifier reads
+        its Zigbee strings (classes.py). None while no bridge/devices is held, or when it doesn't list the device.
+        Shared with every caller: read it, never change it."""
+        if not isinstance(devices := self.parsed("devices"), list):
+            return None
+        if self._devices is None or self._devices[0] is not devices:
+            index = {
+                d["ieee_address"]: d for d in devices if isinstance(d, dict) and isinstance(d.get("ieee_address"), str)
+            }
+            self._devices = (devices, index)
+        return self._devices[1].get(ieee)
 
     def settings(self, section: str, z2m_id: str) -> dict | None:
         """An entity's options: confirmed since the last bridge/info, else bridge/info's own; None when no bridge/info
@@ -215,7 +230,13 @@ async def async_setup(hass: HomeAssistant, entry: ConfigEntry, on_online: Callab
     try:
         await cache.subscribe(hass)
     except Exception as err:  # noqa: BLE001 - each caller reads fresh, as without the cache
-        _LOGGER.warning("Couldn't subscribe to Zigbee2MQTT's bridge, so each action reads it fresh: %r", err)
+        # Without the cache, a group's members can't be listed sync (members.expand_group), so every group counts
+        # as Experimental, and turn_on_for refuses it and every device but a Hue one for good (classes.unplaced).
+        _LOGGER.warning(
+            "Couldn't subscribe to Zigbee2MQTT's bridge, so each action reads it fresh, Zigbee2MQTT groups run "
+            "only with Experimental features on, and turn on with timer refuses them and every device but Hue's: %r",
+            err,
+        )
         cache.stop()
         return
     state[_KEY] = cache

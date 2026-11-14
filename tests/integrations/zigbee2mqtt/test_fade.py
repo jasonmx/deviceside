@@ -9,8 +9,8 @@ from custom_components.deviceside.core import ha_watch
 from custom_components.deviceside.integrations.zigbee2mqtt import bridge, members
 from custom_components.deviceside.integrations.zigbee2mqtt.fade import hue_moves, transition_cache
 
-from .conftest import GET, SENT, SET, commands, group, light
-from ...conftest import advance, call, refusal, result, wall_clock_now
+from .conftest import GET, SENT, SET, call, commands, group, light
+from ...conftest import advance, refusal, result, wall_clock_now
 from ...fixtures.zigbee2mqtt import add_z2m_group, z2m_entry
 
 pytestmark = pytest.mark.usefixtures("setup_production", "clock")

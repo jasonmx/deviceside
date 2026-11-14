@@ -11,7 +11,8 @@ from homeassistant.util import dt as dt_util
 
 from custom_components.deviceside.integrations.zigbee2mqtt import read
 
-from ...conftest import allow_experimental, call, refusal, sent
+from .conftest import call
+from ...conftest import allow_experimental, refusal, sent
 from ...fixtures.zigbee2mqtt import GROUPS, IEEE, INFO, add_z2m_entity, add_z2m_group, z2m_entry
 
 pytestmark = pytest.mark.usefixtures("setup_production")
@@ -287,6 +288,19 @@ async def test_a_logged_read_error_raises_at_once(hass, broker, monkeypatch, cap
     assert "lightingColorCtrl.read() failed (UNSUPPORTED_ATTRIBUTE)" in caplog.text
 
 
+async def test_the_fake_broker_logs_a_read_of_an_attribute_the_bulb_lacks_as_failed(hass, broker, caplog):
+    """The fixture's own reply (tests/fixtures/zigbee2mqtt.py, Broker._read), as Zigbee2MQTT answers for a bulb
+    without the attribute: a failed read on bridge/logging, not a reply."""
+    bulb(hass, broker)
+    del broker.devices[IEEE][1]["genOnOff"]["onTime"]
+
+    with pytest.raises(HomeAssistantError) as raised:
+        await call(hass, "get_attributes", {"entity_id": "light.lamp"})
+
+    assert raised.value.translation_key == "targets_failed"
+    assert "genOnOff.read() failed (UNSUPPORTED_ATTRIBUTE)" in caplog.text
+
+
 async def test_a_delivery_failure_is_read_again(hass, broker, caplog):
     bulb(hass, broker)
     broker.read_errors_then_reply[(IEEE, "genOnOff")] = ["Delivery failed for '1'"]
@@ -400,11 +414,26 @@ async def test_group_leaves_out_unavailable_members_and_those_ha_lacks(hass, bro
         members=[{"ieee_address": "0x01"}, {"ieee_address": "0x02"}, {"ieee_address": "0x03"}, {}],
     )
     hass.states.async_set("light.two", "unavailable")
+    # A member HA lacks leaves membership unknowable (members.expand_group), so the group runs only flagged.
+    allow_experimental(hass)
 
     response = await call(hass, "get_attributes", {"entity_id": "light.room"})
 
     assert response == {"light.room": ROW | {"color_temp_kelvin": 4000}}
     assert {topic for topic, _ in broker.reads()} == {"zigbee2mqtt/0x01/set"}
+
+
+async def test_a_group_whose_members_are_all_unavailable_is_skipped_as_empty(hass, broker):
+    """The dispatcher plans it, as bridge/groups lists members, but there is no light to read: nothing answers."""
+    group(hass, broker, one={}, two={})
+    hass.states.async_set("light.one", "unavailable")
+    hass.states.async_set("light.two", "unavailable")
+
+    with pytest.raises(HomeAssistantError) as raised:
+        await call(hass, "get_attributes", {"entity_id": "light.room"})
+
+    assert raised.value.translation_key == "no_entities_matched"
+    assert broker.reads() == []
 
 
 async def test_a_member_given_the_key_is_logged_when_the_next_one_fails(hass, broker, caplog):
@@ -429,10 +458,9 @@ async def test_member_failure_fails_the_group(hass, broker):
     assert raised.value.translation_key == "targets_failed"
 
 
-@pytest.mark.parametrize("groups", [[{"id": 7, "members": []}], [{"id": 3, "members": []}]])
-async def test_empty_group_is_skipped_silently(hass, broker, caplog, groups):
+async def test_empty_group_is_skipped_silently(hass, broker, caplog):
     group(hass, broker, one={}, two={}, members=[])
-    broker.retained[GROUPS] = groups
+    broker.retained[GROUPS] = [{"id": 7, "members": []}]
 
     response = await call(hass, "get_attributes", {"entity_id": ["light.room", "light.one"]})
 
@@ -440,9 +468,19 @@ async def test_empty_group_is_skipped_silently(hass, broker, caplog, groups):
     assert "skipped" not in caplog.text
 
 
+async def test_a_group_bridge_groups_doesn_t_list_is_experimental(hass, broker):
+    """Membership unknown, not empty: Z2M may not have published the group yet."""
+    group(hass, broker, one={}, two={}, members=[])
+    broker.retained[GROUPS] = [{"id": 3, "members": []}]
+
+    assert await refusal(hass, "get_attributes", {"entity_id": "light.room"}) == "experimental_off"
+
+
 async def test_no_bridge_groups_fails_the_group(hass, broker):
     group(hass, broker, one={}, two={})
     del broker.retained[GROUPS]
+    assert await refusal(hass, "get_attributes", {"entity_id": "light.room"}) == "experimental_off"
+    allow_experimental(hass)
 
     with pytest.raises(HomeAssistantError) as raised:
         await call(hass, "get_attributes", {"entity_id": "light.room"})

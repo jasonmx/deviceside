@@ -305,7 +305,10 @@ async def test_a_failed_subscribe_warns_and_holds_nothing(
 
     assert bridge_cache.get(hass) is None
     assert not any(broker.listening(topic) for topic in HELD_TOPICS)
-    assert "Couldn't subscribe to Zigbee2MQTT's bridge, so each action reads it fresh" in caplog.text
+    assert (
+        "Couldn't subscribe to Zigbee2MQTT's bridge, so each action reads it fresh, Zigbee2MQTT groups run only "
+        "with Experimental features on, and turn on with timer refuses them and every device but Hue's" in caplog.text
+    )
 
 
 async def test_setup_entry_starts_it_once_mqtt_is_up(hass, broker, connection, mqtt_up):

@@ -47,6 +47,12 @@ ported or recorded for another is dropped there, not refused (`color_temp_kelvin
 light field, so a timed call still runs its timer. A call left nothing to do by dropping is `unchanged` with
 `fields_dropped`. An empty group is skipped silently, as core's group expansion yields nothing for one.
 
+**Not yet classed** (`class_unknown`) is refused the same way, raised if named and skipped if not, but it is
+transient: it holds only until the integration has reported the device or group
+([evidence.md](evidence.md#doesnt-work-not-yet-supported-untested)). That usually takes seconds, so an automation
+firing at startup can get it; if the integration never reports it (DeviceSide couldn't connect to it), it holds
+until DeviceSide reloads.
+
 **Unlisted fields depart from core.** An adapter may name, in `AdapterScope.unlisted`, fields its devices take
 although the light's state says they can't; a light never lacks those for that adapter, where
 `filter_turn_on_params` would drop them. Why: DeviceSide fills design gaps between an upstream integration and HA,
@@ -87,9 +93,11 @@ raises or the entity is skipped.
   `clamped_to`. Skipped targets are left out, as core leaves them out, and `unsupported` or `rejected` never
   reach a response: the call skips or raises instead. A call that has nothing to do succeeds quietly as
   `unchanged` with a `detail`, checked before the target's class, so nothing-to-do wins over doesn't-work or not
-  supported. A native group with a refused member falls back to its members where the integration can list them
+  supported. A native group with a refused member, or an Experimental one while Experimental features is off, falls
+  back to its members where the integration can list them. A group that falls back has no entry of its own: its
+  members' entries answer for it, and it raises only when none of its members runs
   ([design.md](design.md#core-contract), Groups). A named target whose class doesn't work raises with the reason why.
-- **The class.** On an integration that names [classes](evidence.md#device-classes) (Shelly), each entry carries the
+- **The class.** On an integration that names [classes](evidence.md#device-classes), each entry carries the
   class the call reached, as an attribute would: a command's beside `status` and `integration`, a query's among its
   data. A target's is `capability` (a string: `"RGBCCT"`); a native group's is `capabilities`, its members' classes
   once each, sorted (a list: `["hue", "other"]`). The key is absent when the integration couldn't name one, for a

@@ -12,10 +12,9 @@ from homeassistant.helpers import device_registry as dr
 from custom_components.deviceside.core.runtime import DATA
 from custom_components.deviceside.integrations.zigbee2mqtt import bridge_cache, set_check, turn_on_for
 
-from .conftest import SENT, SET, commands, group, light
+from .conftest import SENT, SET, call, commands, group, light
 from .test_native_control import target
 from .test_set_attributes import DIMMABLE, bulb
-from ...conftest import call
 from ...fixtures.zigbee2mqtt import IEEE
 
 pytestmark = pytest.mark.usefixtures("setup_production", "clock")

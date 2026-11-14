@@ -170,8 +170,8 @@ class IntegrationInfo:
     is_group: Callable[[HomeAssistant, Target], bool] | None = None
     # Members of a native group, sync and with no I/O: for adapters without native_groups, the targets they get; for
     # one with, the members whose classes the group takes, and the targets it falls back to when a member's class is
-    # refused (docs/design.md, Groups). None means membership is unknowable here.
-    expand_group: Callable[[HomeAssistant, Target], list[Target]] | None = None
+    # refused (docs/design.md, Groups). None, as the hook or its answer, means membership is unknowable here.
+    expand_group: Callable[[HomeAssistant, Target], list[Target] | None] | None = None
     # Names a target's class (docs/evidence.md, Device classes): sync and cheap, no I/O, reading only the target's
     # registry entries, config entry or the integration's data. A device it can't place gets the default class; None
     # only for a target it can't class at all. It must take hass=None on a target with no config entry or state: the
@@ -180,6 +180,9 @@ class IntegrationInfo:
     # Every class capability() can name, so a scope's typo fails at registration and the cards name the classes an
     # adapter serves in neither its capabilities nor its doesnt_work as not yet supported.
     classes: frozenset[str] = frozenset()
+    # The class capability() gives a device it can't place, one of `classes`; the registry refuses any scope holding it
+    # as Verified (docs/evidence.md, Device classes). None for an integration whose classes name every target (Shelly).
+    default_class: str | None = None
     # Drops what a light or scene call from HA leaves stale (core/ha_watch.py); None holds nothing it could.
     call_resolver: CallResolver | None = None
     max_concurrency: int = 4

@@ -6,8 +6,8 @@ from homeassistant.exceptions import HomeAssistantError
 from custom_components.deviceside.core.transition import SATURATION
 from custom_components.deviceside.integrations.zigbee2mqtt.fade import hue_moves, transition_cache
 
-from .conftest import GET, SENT, SET, commands, group, light
-from ...conftest import advance, call, wall_clock_now
+from .conftest import GET, SENT, SET, call, commands, group, light
+from ...conftest import advance, wall_clock_now
 
 pytestmark = pytest.mark.usefixtures("setup_production", "clock")
 

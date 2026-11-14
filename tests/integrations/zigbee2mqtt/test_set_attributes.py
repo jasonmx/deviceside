@@ -6,7 +6,8 @@ from homeassistant.util.color import color_RGB_to_xy, color_xy_to_hs
 
 from custom_components.deviceside.integrations.zigbee2mqtt import set_attributes
 
-from ...conftest import call, refusal, result
+from .conftest import call
+from ...conftest import refusal, result
 from ...fixtures.zigbee2mqtt import GROUPS, IEEE, INFO, add_z2m_entity, add_z2m_group, z2m_entry
 
 pytestmark = pytest.mark.usefixtures("setup_production")

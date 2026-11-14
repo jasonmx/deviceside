@@ -7,7 +7,7 @@ from types import ModuleType
 from .action import Action
 from .adapter import Adapter
 from .ha_watch import CallResolver
-from .scope import IntegrationInfo
+from .scope import IntegrationInfo, Level
 from .. import actions as actions_pkg
 from .. import integrations as integrations_pkg
 
@@ -31,7 +31,8 @@ def check_classes(cls: type[Adapter], info: IntegrationInfo) -> None:
     """One class axis per integration (docs/evidence.md, Device classes): an integration that names classes holds
     them in every adapter's scope, and one that names none in none. Otherwise an adapter that skipped the axis would
     let every class through at its domain's level, and one an integration can't name would refuse every call as
-    Experimental. Each class a scope holds is one the integration declares, so a typo fails here."""
+    Experimental. Each class a scope holds is one the integration declares, so a typo fails here. The default class,
+    which holds every device not yet placed, is never Verified: one maker's record proves nothing about the rest."""
     held = cls.scope.capabilities
     if info.capability is None:
         if held is not None or cls.scope.doesnt_work:
@@ -43,6 +44,8 @@ def check_classes(cls: type[Adapter], info: IntegrationInfo) -> None:
         raise ValueError(
             f"{cls.__name__} holds classes {info.key} doesn't declare (IntegrationInfo.classes): {unknown}"
         )
+    if held.get(info.default_class) is Level.VERIFIED:
+        raise ValueError(f"{cls.__name__} holds {info.key}'s default class {info.default_class!r} as Verified")
 
 
 class AdapterRegistry:
@@ -85,6 +88,8 @@ class AdapterRegistry:
         check_maintainers(info)
         if (info.capability is None) != (not info.classes):
             raise ValueError(f"{info.key}: IntegrationInfo.capability and classes come together")
+        if info.default_class is not None and info.default_class not in info.classes:
+            raise ValueError(f"{info.key}: default_class {info.default_class!r} is none of its classes")
         self.integrations[info.key] = info
         for cls in module.ADAPTERS:
             if cls.integration != info.key:

@@ -6,8 +6,8 @@ import pytest
 
 from custom_components.deviceside.integrations.zigbee2mqtt import color_refresh
 
-from .conftest import commands, group, light
-from ...conftest import advance, call, wall_clock_now
+from .conftest import call, commands, group, light
+from ...conftest import advance, wall_clock_now
 from ...fixtures.zigbee2mqtt import IEEE
 
 pytestmark = pytest.mark.usefixtures("setup_production", "clock")
